@@ -17,3 +17,4 @@ demo-output/
 
 # Reference project with its own git history (excluded from this repo)
 shapeshift/
+.env*
