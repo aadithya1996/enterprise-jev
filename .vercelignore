@@ -1,0 +1,19 @@
+# Only api/, server/, public/, vercel.json and package.json are needed at runtime.
+.env
+.git
+node_modules
+
+# Reference material & tooling not used by the deployed app
+shapeshift
+scripts
+demo-output
+run-demo.sh
+DEMO_SCRIPT.md
+DEPLOY.md
+jev_user_management_use_cases.md
+bhrefbn.txt
+style.css
+
+# Test / capture artifacts
+test-*.png
+*.mp4

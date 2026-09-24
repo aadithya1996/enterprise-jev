@@ -1,0 +1,19 @@
+node_modules
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel
+
+# OS / editor
+.DS_Store
+
+# Local test & capture artifacts
+test-*.png
+
+# Generated demo screenshots / report (regenerate with `npm run demo:display`)
+demo-output/
+
+# Reference project with its own git history (excluded from this repo)
+shapeshift/

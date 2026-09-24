@@ -1,0 +1,12 @@
+{
+  "name": "jev-user-management",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test",
+    "demo": "node scripts/demo.mjs",
+    "demo:display": "node scripts/display-demo.mjs",
+    "demo:showcase": "node scripts/display-demo.mjs"
+  }
+}
