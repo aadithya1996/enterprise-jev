@@ -960,10 +960,28 @@ textarea {
   animation: reflexPulse 1.2s ease infinite;
 }
 .card-loader-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted);
+  color: #9a5312;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.card-loader-hint kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--paper);
+  border: 1px solid rgba(228, 177, 93, 0.55);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #9a5312;
 }
 
 /* Staged fields preview */

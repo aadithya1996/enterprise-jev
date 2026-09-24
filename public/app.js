@@ -1189,17 +1189,14 @@ function renderUiCard(message) {
       (message.preview || message.staged) ? renderReflexSignals(message) : null
     ]),
     h("div", { class: "card-topbar-right" }, [
-      message.staged
+      // In staged mode the loader row below carries the single "press Enter"
+      // instruction, so we don't duplicate a hint pill up here.
+      !message.staged && message.uiStatus === "open"
         ? h("span", { class: "card-key-hint" }, [
             h("kbd", {}, "↵"),
-            h("span", {}, "Enter to deploy")
+            h("span", {}, "Enter to confirm")
           ])
-        : message.uiStatus === "open"
-          ? h("span", { class: "card-key-hint" }, [
-              h("kbd", {}, "↵"),
-              h("span", {}, "Enter to confirm")
-            ])
-          : null,
+        : null,
       message.uiStatus === "open"
         ? h("button", { class: "card-close-btn", type: "button", "aria-label": "Dismiss", onClick: () => dismissUi(message) }, "×")
         : null
@@ -1215,9 +1212,15 @@ function renderUiCard(message) {
         h("div", { class: "card-loader-meta" }, [
           h("span", { class: "card-loader-status" }, [
             h("span", { class: "pulse-bolt" }, "⚡"),
-            h("span", {}, message.deploying ? "Opening the full card…" : "Draft ready · press Enter to open the full card")
+            h("span", {}, message.deploying ? "Deploying the full card…" : "Draft ready")
           ]),
-          h("span", { class: "card-loader-hint" }, "Hit ↵ Enter to deploy")
+          message.deploying
+            ? null
+            : h("span", { class: "card-loader-hint" }, [
+                h("span", {}, "Press"),
+                h("kbd", {}, "↵"),
+                h("span", {}, "Enter to deploy in full")
+              ])
         ])
       ])
     : null;
@@ -1798,7 +1801,18 @@ function playEditIntakeAnimation(data) {
 const PREVIEW_ID = "live-preview";
 const livePreview = { timer: null, token: 0, key: null, subjectId: null };
 
-const TRANSIENT_ACTION_CUE = /\b(update|promote|demote|add|remove|delete|offboard|inactivate|deactivate|reactivate|ban|unban|edit|change|move|reassign|assign|grant|give|view|show|lookup|manage|set)\b/i;
+const TRANSIENT_ACTION_CUE = /\b(update|promote|demote|elevate|add|create|invite|onboard|provision|deprovision|remove|delete|offboard|inactivate|deactivate|reactivate|restore|suspend|enable|disable|lock|unlock|ban|unban|edit|change|modify|make|move|reassign|assign|unassign|grant|give|revoke|view|show|list|lookup|export|manage|set|who|which)\b/i;
+
+// A prompt is "actionable" — and therefore worth a live reflex preview — when it
+// reads like a command, regardless of whether it names an existing directory
+// person. This lets group/RLS/export/policy/temporary-access and brand-new-user
+// prompts draft a card too; the server decides if there's actually a modal.
+function looksActionable(text) {
+  if (!text || !state.directory) return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 6) return false;
+  return TRANSIENT_ACTION_CUE.test(trimmed);
+}
 
 function detectTransientSubject(text) {
   if (!text || !state.directory) return null;
@@ -1832,8 +1846,7 @@ async function runLivePreview() {
   livePreview.timer = null;
   if (state.pending || window.__demoRunning) return;
   const text = nodes.composer.value.trim();
-  const user = detectTransientSubject(text);
-  if (!user) {
+  if (!looksActionable(text)) {
     clearLivePreview();
     return;
   }
@@ -1986,29 +1999,163 @@ function renderReflexSignals(message) {
 // with an example prompt that drops into the composer and fires the live
 // preview — an override and a discovery surface in one.
 // ---------------------------------------------------------------------------
-const REFLEX_ACTIONS = [
-  { icon: "👤", label: "Add user", cat: "Provisioning", ex: "Add Priya to the support team" },
-  { icon: "🧩", label: "Edit groups", cat: "Membership", ex: "Add Marcus to the billing team" },
+// The action list is rebuilt from the *live* directory every time the palette
+// opens (`buildReflexActions`), so each example always targets a real subject
+// that produces a meaningful, non-empty result — never a no-op or a phantom
+// name. This static list is only a fallback for the brief moment before the
+// directory snapshot has loaded.
+const REFLEX_ACTION_FALLBACK = [
+  { icon: "👤", label: "Add user", cat: "Provisioning", ex: "Add Priya Nair to the Support team" },
+  { icon: "🧩", label: "Edit groups", cat: "Membership", ex: "Add Marcus to the Billing team" },
   { icon: "⬆️", label: "Edit role", cat: "RBAC", ex: "Promote Dana to Admin" },
-  { icon: "⏱️", label: "Temporary override", cat: "Break-glass", ex: "Give me superadmin access for 2 hours to fix billing" },
-  { icon: "🔗", label: "Update manager", cat: "Org", ex: "Reassign Dana's reports to Alice" },
+  { icon: "⏱️", label: "Temporary override", cat: "Break-glass", ex: "Give me superadmin access for 2 hours to fix the billing bug" },
+  { icon: "🔗", label: "Update manager", cat: "Org", ex: "Make Alice the manager for Leo" },
   { icon: "⏸️", label: "Inactivate", cat: "Lifecycle", ex: "Inactivate Marcus for a security review" },
   { icon: "🚫", label: "Ban user", cat: "Lifecycle", ex: "Ban Leo for 24 hours" },
-  { icon: "🗑️", label: "Offboard / delete", cat: "Deprovisioning", ex: "Hard-delete Sarah Chen after payroll" },
+  { icon: "🗑️", label: "Offboard / delete", cat: "Deprovisioning", ex: "Hard-delete Sarah Chen after payroll clears" },
   { icon: "🔍", label: "View profile", cat: "Directory", ex: "Show me Dana's profile and metadata" },
-  { icon: "✏️", label: "Edit metadata", cat: "Directory", ex: "Set Dana's last name to Ruiz" },
-  { icon: "📤", label: "Export users", cat: "Directory", ex: "Export support users under 30 as CSV" },
+  { icon: "✏️", label: "Edit metadata", cat: "Directory", ex: "Set Noah's last name to Okafor" },
+  { icon: "📤", label: "Export users", cat: "Directory", ex: "Export Engineering users as CSV" },
   { icon: "➕", label: "Create group", cat: "Groups", ex: "Create a Platform group for on-call engineers" },
   { icon: "🛡️", label: "Manage RLS", cat: "Security", ex: "Add an RLS policy so users can only read their own profiles" },
   { icon: "❓", label: "Explain access", cat: "Security", ex: "Who can read invoices under the current policies?" }
 ];
 
-const reflexPalette = { open: false, index: 0, filter: "" };
+// Names that do not collide with the seeded directory, used for onboarding
+// examples so "Add <name>" always creates a genuinely new user.
+const NEW_PERSON_POOL = ["Priya Nair", "Cecil Adeyemi", "Mara Voss", "Ravi Menon", "Tomas Beck"];
+
+function firstNameOf(user) {
+  return user ? String(user.name || "").split(/\s+/)[0] : "";
+}
+
+// Render a group as a natural "<name> team" phrase without doubling the word
+// when the stored name already ends in team/group/squad (e.g. "Admin team").
+function groupPhrase(id) {
+  const name = groupName(id);
+  return /\b(team|group|squad)$/i.test(name) ? name : `${name} team`;
+}
+
+// Derive the "/" palette actions from real directory state so every example is
+// valid against the current data: real subjects, groups they are actually
+// missing from, managers that actually change, exports that are non-empty, and
+// metadata edits that genuinely differ from the stored value.
+function buildReflexActions() {
+  const dir = state.directory;
+  const users = dir?.users || [];
+  const groups = dir?.groups || [];
+  const active = users.filter((u) => u.status === "active");
+  if (!active.length || !groups.length) return REFLEX_ACTION_FALLBACK;
+
+  const admins = active.filter((u) => u.role === "admin");
+  const members = active.filter((u) => u.role === "member");
+  const hasReports = (u) => users.some((r) => r.managerId === u.id && r.status === "active");
+
+  // Edit role — promote someone who is actually below Admin.
+  const roleSubject =
+    active.find((u) => u.role === "moderator") || members[0] || active[0];
+
+  // Edit groups — a user paired with a real group they are NOT already in
+  // (skip the "people" org group so the example reads naturally).
+  let groupSubject = active[0];
+  let groupTargetId = groups[0].id;
+  outer: for (const u of [...members, ...active]) {
+    for (const g of groups) {
+      if (g.id === "people") continue;
+      if (!(u.groups || []).includes(g.id)) {
+        groupSubject = u;
+        groupTargetId = g.id;
+        break outer;
+      }
+    }
+  }
+
+  // Update manager — find a (subject, new manager) pair where the new manager
+  // is genuinely different from the subject's current manager, so the example
+  // always changes something instead of re-asserting the existing link.
+  const managerCandidates = admins.length ? admins : active.filter((u) => hasReports(u));
+  let managedUser = null;
+  let altManager = null;
+  mgrLoop: for (const subj of active) {
+    if (!subj.managerId) continue;
+    for (const mgr of managerCandidates) {
+      if (mgr.id !== subj.id && mgr.id !== subj.managerId) {
+        managedUser = subj;
+        altManager = mgr;
+        break mgrLoop;
+      }
+    }
+  }
+  if (!managedUser) {
+    managedUser = active.find((u) => u.managerId) || active[0];
+    altManager =
+      managerCandidates.find((m) => m.id !== managedUser.id) ||
+      active.find((u) => u.id !== managedUser.id) ||
+      active[0];
+  }
+
+  // Offboard — someone with reports AND storage makes the impact tangible.
+  const offboardSubject =
+    active.find((u) => hasReports(u) && (u.storageObjects || []).length) ||
+    active.find((u) => hasReports(u)) ||
+    active.find((u) => (u.storageObjects || []).length) ||
+    active[0];
+
+  // Inactivate / Ban — two distinct active members.
+  const inactivateSubject = members[0] || active[0];
+  const banSubject =
+    members.find((u) => u.id !== inactivateSubject.id) ||
+    active.find((u) => u.id !== inactivateSubject.id) ||
+    active[0];
+
+  // Edit metadata — change a last name to a value that genuinely differs.
+  const metaSubject = active.find((u) => u.lastName) || active[0];
+  const newLast =
+    metaSubject.lastName && metaSubject.lastName.toLowerCase() !== "okafor"
+      ? "Okafor"
+      : "Nguyen";
+
+  // Export — the group with the most active members (guaranteed non-empty).
+  const exportGroupId =
+    groups
+      .map((g) => ({ id: g.id, n: active.filter((u) => (u.groups || []).includes(g.id)).length }))
+      .filter((g) => g.n > 0)
+      .sort((a, b) => b.n - a.n)[0]?.id || groups[0].id;
+
+  // Add user — a name that isn't already in the directory + a real group.
+  const existingFirst = new Set(users.map((u) => firstNameOf(u).toLowerCase()));
+  const newName =
+    NEW_PERSON_POOL.find((n) => !existingFirst.has(n.split(" ")[0].toLowerCase())) ||
+    NEW_PERSON_POOL[0];
+  const addGroupId = groups.find((g) => g.id === "support")?.id || groupTargetId;
+
+  return [
+    { icon: "👤", label: "Add user", cat: "Provisioning", ex: `Add ${newName} to the ${groupPhrase(addGroupId)}` },
+    { icon: "🧩", label: "Edit groups", cat: "Membership", ex: `Add ${firstNameOf(groupSubject)} to the ${groupPhrase(groupTargetId)}` },
+    { icon: "⬆️", label: "Edit role", cat: "RBAC", ex: `Promote ${firstNameOf(roleSubject)} to Admin` },
+    { icon: "⏱️", label: "Temporary override", cat: "Break-glass", ex: "Give me superadmin access for 2 hours to fix the billing bug" },
+    { icon: "🔗", label: "Update manager", cat: "Org", ex: `Make ${firstNameOf(altManager)} the manager for ${firstNameOf(managedUser)}` },
+    { icon: "⏸️", label: "Inactivate", cat: "Lifecycle", ex: `Inactivate ${firstNameOf(inactivateSubject)} for a security review` },
+    { icon: "🚫", label: "Ban user", cat: "Lifecycle", ex: `Ban ${firstNameOf(banSubject)} for 24 hours` },
+    { icon: "🗑️", label: "Offboard / delete", cat: "Deprovisioning", ex: `Hard-delete ${offboardSubject.name} after payroll clears` },
+    { icon: "🔍", label: "View profile", cat: "Directory", ex: `Show me ${firstNameOf(roleSubject)}'s profile and metadata` },
+    { icon: "✏️", label: "Edit metadata", cat: "Directory", ex: `Set ${firstNameOf(metaSubject)}'s last name to ${newLast}` },
+    { icon: "📤", label: "Export users", cat: "Directory", ex: `Export ${groupName(exportGroupId)} users as CSV` },
+    { icon: "➕", label: "Create group", cat: "Groups", ex: "Create a Platform group for on-call engineers" },
+    { icon: "🛡️", label: "Manage RLS", cat: "Security", ex: "Add an RLS policy so users can only read their own profiles" },
+    { icon: "❓", label: "Explain access", cat: "Security", ex: "Who can read invoices under the current policies?" }
+  ];
+}
+
+const reflexPalette = { open: false, index: 0, filter: "", actions: REFLEX_ACTION_FALLBACK };
 
 function filteredReflexActions() {
+  const source = reflexPalette.actions && reflexPalette.actions.length
+    ? reflexPalette.actions
+    : REFLEX_ACTION_FALLBACK;
   const f = reflexPalette.filter.trim().toLowerCase();
-  if (!f) return REFLEX_ACTIONS;
-  return REFLEX_ACTIONS.filter((a) => `${a.label} ${a.cat} ${a.ex}`.toLowerCase().includes(f));
+  if (!f) return source;
+  return source.filter((a) => `${a.label} ${a.cat} ${a.ex}`.toLowerCase().includes(f));
 }
 
 function openReflexPalette() {
@@ -2016,6 +2163,7 @@ function openReflexPalette() {
   reflexPalette.open = true;
   reflexPalette.index = 0;
   reflexPalette.filter = "";
+  reflexPalette.actions = buildReflexActions();
 
   const input = h("input", {
     class: "reflex-palette-input",
