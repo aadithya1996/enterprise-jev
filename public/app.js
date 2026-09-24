@@ -21,7 +21,7 @@ const DOCK_TABS = [
 ];
 const DOCK_MIN = 140;
 const DOCK_MAX = 480;
-const DOCK_DEFAULT = 220;
+const DOCK_DEFAULT = 184;
 
 const state = {
   directory: null,
